@@ -1,12 +1,17 @@
 #!/bin/bash
 
-ETH="eth0"
+ETHER="eth0"
 WIFI="wlan0"
-INTERVAL=15
-LOG_FILE="/var/log/network-failover.log"
+
+WIFI_NAME="zyxw_py Mart 2.4g"
+WIFI_PASSWORD="00000000"
+INTERVAL=5
+LOG_FILE="/var/log/choose-network.log"
+
+
 
 log() {
-    echo "{\"timestamp\":\"$(date -Iseconds)\",\"level\":\"INFO\",\"message\":\"$1\"}" >> $LOG_FILE
+    echo "{$(date -Iseconds)\",\"level\":\"INFO\",\"message\":\"$1\"}" >> $LOG_FILE
 }
 
 check_ping() {
@@ -26,17 +31,54 @@ internet_ok() {
     check_ping && check_dns && check_http
 }
 
+
+state_adapter_ethernet(){
+ETHERNET_STATUS=$(ip -br link show $ETHER | awk '{print $2}')
+echo "$ETHERNET_STATUS"
+}
+
+
+state_adapter_wireless(){
+ETHERNET_STATUS=$(ip -br link show $WIFI | awk '{print $2}')
+echo "$ETHERNET_STATUS"
+}
+
+
+
+log "Script started"
+
+
 while true; do
 
-    ETH_STATE=$(nmcli -t -f DEVICE,STATE device | grep "^$ETH:" | cut -d: -f2)
 
-    if [[ "$ETH_STATE" == "connected" ]] && internet_ok; then
+    if [[ $(state_adapter_ethernet) == "UP" && (internet_ok) ]] ; then
+        log "Status da rede Ethernet: $(state_adapter_ethernet)"
         log "Ethernet OK - usando cabo"
-        nmcli device connect $ETH
-        nmcli device disconnect $WIFI
+        #nmcli device connect $ETH
+        if [[ $(nmcli radio wifi) == "enabled" ]]; then
+           log "Desabilitando adaptador wireless [ $WIFI ]"
+           nmcli radio wifi off
+        fi
+
+        #nmcli device disconnect $WIFI
+        sleep $INTERVAL
+        continue
     else
-        log "Ethernet falhou - ativando Wi-Fi"
-        nmcli device connect $WIFI
+        log "Ethernet falhou - Conectando a rede $WIFI_NAME"
+        if [[ $(nmcli -t -f ACTIVE,SSID dev wifi | awk  -F: '$1=="yes" || $1=="sim" {print $2}') == $WIFI_NAME ]]; then
+           log "Wifi conectado a rede [ $WIFI_NAME ]"
+           sleep 5
+        continue
+        else
+          log "O adaptador "$WIFI" estava desabilitado. Habilitando "$WIFI"..."
+          nmcli radio wifi on
+          sleep 5
+          #log "Conectando a rede [ $WIFI_NAME ]"
+          log $(nmcli device wifi connect "$WIFI_NAME" password $WIFI_PASSWORD)
+          log "Status da rede Wifi:  $(state_adapter_wireless)"
+          log "Conectado a rede [ $(nmcli -t -f ACTIVE,SSID dev wifi | awk  -F: '$1=="yes" || $1=="sim" {print $2}') ]"
+
+        fi
     fi
 
     sleep $INTERVAL
